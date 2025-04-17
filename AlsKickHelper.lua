@@ -1,13 +1,5 @@
---[[--------------------------------------------------------------------
- ▄█    ▄   ████▄ ██   █    ▄   ▄█▄    ▄█    ▄   ▄███▄   ▄█      ▄   ▄███▄
- █ █  █    █   █ █ █  █     █  █▀ ▀▄  ██    █    █▀   ▀  ██       █  █▀   ▀
- █ ▄  █    █   █ █▄▄█ █ ██   █ █   ▄▀ ██ █   █ ▄ █▀▀      ██ █     █ █▀▀
- █  █ █    ▀████ █  █ █ █ █  █ █▄  ▀█ █ █ █  █  █        ▐█ █  █   █ █
- █   ██        █   █  █ █  █ █  ▀███▀ █  █  █    █        ▐ █   █▄█      v1.0
-             █   █  █  █   █
-             █   █  █  █   █             by You
----------------------------------------------------------------------]]
-
+-- Kicker 1.1.0 – synchronises “kick targets” for the whole group
+-----------------------------------------------------------------
 local addonName, addon = ...
 local f                = CreateFrame("Frame")
 
@@ -15,11 +7,11 @@ local f                = CreateFrame("Frame")
 --  Internal state
 ------------------------------------------------------------
 local playerName       = UnitName("player")
-local myKickTargetGUID = nil -- GUID of YOUR target
+local myKickTargetGUID = nil -- your target’s GUID
 local assignments      = {}  -- [playerName] = guid
 
 ------------------------------------------------------------
---  Utilities
+--  Helpers
 ------------------------------------------------------------
 local function trim(s) return (s:gsub("^%s*(.-)%s*$", "%1")) end
 local function inGroup(name)
@@ -45,7 +37,7 @@ local function CreateUI()
         tile = true,
         tileSize = 16,
         edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
     ui:SetBackdropColor(0, 0, 0, 0.7)
 
@@ -82,7 +74,6 @@ local function UpdateUI()
     for i = 1, #ui.lines do
         ui.lines[i]:SetText(list[i] or "")
     end
-
     ui:SetHeight(28 + #list * 14)
     ui:Show()
 end
@@ -92,45 +83,63 @@ end
 ------------------------------------------------------------
 local PREFIX = "KICKER"
 
-local function SendUpdate(guidOrClear)
-    local channel
+local function getChannel()
     if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
-        channel = "INSTANCE_CHAT"
+        return "INSTANCE_CHAT"
     elseif IsInRaid() then
-        channel = "RAID"
+        return "RAID"
     elseif IsInGroup() then
-        channel = "PARTY"
-    end
-    if channel then
-        C_ChatInfo.SendAddonMessage(PREFIX, guidOrClear, channel)
+        return "PARTY"
     end
 end
 
+-- send wrapper ------------------------------------------------
+-- type = "SET" | "CLEAR" | "QUERY"
+local function SendAddon(type, payload)
+    local channel = getChannel()
+    if not channel then return end
+    local msg = type == "SET" and ("SET:" .. payload)
+        or type == "CLEAR" and "CLEAR"
+        or type == "QUERY" and "QUERY"
+    if msg then C_ChatInfo.SendAddonMessage(PREFIX, msg, channel) end
+end
+
+-- incoming messages ------------------------------------------
+--  SET:<guid>  – sender’s current kick target
+--  CLEAR       – sender cleared their target
+--  QUERY       – “please broadcast your current target”
 local function HandleAddonMessage(msg, sender)
     if sender == playerName then return end
+
     if msg == "CLEAR" then
         assignments[sender] = nil
-    else
-        assignments[sender] = msg
+        UpdateUI()
+    elseif msg:sub(1, 4) == "SET:" then
+        local guid = msg:sub(5)
+        assignments[sender] = guid
+        UpdateUI()
+    elseif msg == "QUERY" then
+        if myKickTargetGUID then
+            SendAddon("SET", myKickTargetGUID) -- answer with your target
+        end
     end
-    UpdateUI()
 end
 
 ------------------------------------------------------------
---  Slash commands
+--  Slash‑command logic
 ------------------------------------------------------------
 SLASH_KICKER1 = "/kicker"
 SlashCmdList.KICKER = function(msg)
     msg = trim(string.lower(msg or ""))
     if msg == "add" then
-        local u = "target"
-        if UnitExists(u) and UnitCanAttack("player", u) then
-            local guid = UnitGUID(u)
+        if UnitExists("target") and UnitCanAttack("player", "target") then
+            local guid = UnitGUID("target")
             if guid then
                 myKickTargetGUID        = guid
                 assignments[playerName] = guid
-                print("|cff00ff00[Kicker]|r Kick target set to |cffffff00" .. UnitName(u) .. "|r.")
-                SendUpdate(guid)
+                print("|cff00ff00[Kicker]|r kick target set to |cffffff00" .. UnitName("target") .. "|r.")
+                SendAddon("SET", guid) -- tell the group your new target
+                SendAddon("QUERY") -- ask everyone else to reply
                 UpdateUI()
             else
                 print("|cff00ff00[Kicker]|r Could not read target GUID.")
@@ -142,14 +151,14 @@ SlashCmdList.KICKER = function(msg)
         if myKickTargetGUID then
             myKickTargetGUID        = nil
             assignments[playerName] = nil
-            print("|cff00ff00[Kicker]|r Kick target cleared.")
-            SendUpdate("CLEAR")
+            print("|cff00ff00[Kicker]|r kick target cleared.")
+            SendAddon("CLEAR")
             UpdateUI()
         end
     else
         print("|cff00ff00[Kicker]|r usage:")
-        print("  /kicker add   - mark your current enemy as kick target")
-        print("  /kicker clear - remove your kick target")
+        print("  /kicker add   – mark your target as kick target")
+        print("  /kicker clear – remove your kick target")
     end
 end
 
@@ -165,13 +174,15 @@ f:SetScript("OnEvent", function(_, event, ...)
         C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
         CreateUI()
     elseif event == "GROUP_ROSTER_UPDATE" then
-        -- purge people who left group
+        -- clean up names that left the group
         for p in pairs(assignments) do
             if not inGroup(p) then assignments[p] = nil end
         end
         UpdateUI()
     elseif event == "CHAT_MSG_ADDON" then
         local prefix, msg, _channel, sender = ...
-        if prefix == PREFIX then HandleAddonMessage(msg, Ambiguate(sender, "none")) end
+        if prefix == PREFIX then
+            HandleAddonMessage(msg, Ambiguate(sender, "none"))
+        end
     end
 end)
