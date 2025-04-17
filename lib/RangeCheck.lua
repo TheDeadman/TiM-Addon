@@ -24,18 +24,6 @@ function AlsTiMRange.CheckKickRange()
     print("IS IN RANGE: " .. tostring(AlsTiMRange.isInRange))
 end
 
-function SetTargetGuid()
-
-end
-
-local soundPath = "Interface\\AddOns\\FojjiCore\\sound\\fojjiMsg.ogg"
-local inRangeSound = "Interface\\AddOns\\FojjiCore\\sound\\RetroShot.ogg"
-
--- Toggle state for flashing effect
-local isBright = false
-local didPlaySound = false
-local didPlayInRange = false
-
 InRange:RegisterEvent("SPELL_UPDATE_USABLE")
 InRange:SetScript("OnEvent", function(_, event, arg1)
     AlsTiMRange.CheckKickRange()

@@ -48,5 +48,4 @@ end
 SkillCheckFrame:RegisterEvent("SPELLS_CHANGED")
 SkillCheckFrame:SetScript("OnEvent", function(_, event, arg1)
     SetSpellId();
-    print("SKILLS CHANGED!")
 end)

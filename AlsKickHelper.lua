@@ -1,15 +1,17 @@
 --------------------------------------------------------------------------------
--- KickSync 1.1.0  –  multi‑target interrupt queue helper for WoW Classic
--- Adds watch‑lists per target GUID:  "/ks add"   → watch current enemy  "/ks remove" → un‑watch  "/ks clear" → clear all
+-- KickSync 1.2.0 – multi‑target interrupt queue helper
+-- (Classic Era / Season of Discovery)
+-- v1.2.0 changes: after a player kicks they stay in the list, move to the
+-- bottom, and their name turns RED until their cooldown finishes.
 --------------------------------------------------------------------------------
 local ADDON, KS       = ...
 
 --------------------------------------------------------------------------------
 -- constants -------------------------------------------------------------------
 --------------------------------------------------------------------------------
-local PREFIX          = "KickSync"
-local MAX_LINES       = 10  -- rows per watch frame
-local UPDATE_INTERVAL = 0.5 -- seconds between local cooldown polls
+local PREFIX          = "KickSync" -- Addon‑message prefix
+local MAX_LINES       = 10         -- rows per watch frame
+local UPDATE_INTERVAL = 0.5        -- seconds between local cooldown polls
 
 local CLASS_INTERRUPT = {
     ROGUE   = GetSpellInfo(1766),   -- Kick
@@ -34,27 +36,22 @@ local interruptName   = CLASS_INTERRUPT[playerClass]
 --      mobName   = string,
 --      frame     = Frame,
 --      readyQ    = { {name=string} , ... },
---      hasEntry  = { [name]=true }
+--      hasEntry  = { [name]=true },
+--      onCD      = { [name]=true }   -- true while spell on cooldown (red text)
 --  }
 local watchList       = {}
 
--- helper to iterate watchList in stable order (creation order)
+-- ordered list of GUIDs so that frames are stacked consistently
 local orderedGUIDs    = {}
-
 local function addGUIDOrdered(guid)
-    for _, g in ipairs(orderedGUIDs) do
-        if g == guid then
-            return
-        end
-    end
+    for _, g in ipairs(orderedGUIDs) do if g == guid then return end end
     orderedGUIDs[#orderedGUIDs + 1] = guid
 end
-
 local function removeGUIDOrdered(guid)
-    for i = #orderedGUIDs, 1, -1 do -- iterate backwards so table.remove is safe
+    for i = #orderedGUIDs, 1, -1 do
         if orderedGUIDs[i] == guid then
             table.remove(orderedGUIDs, i)
-            return -- stop after the first match
+            return
         end
     end
 end
@@ -115,12 +112,22 @@ local function RemoveFromQueue(watch, name)
         if watch.readyQ[i].name == name then table.remove(watch.readyQ, i) end
     end
     watch.hasEntry[name] = nil
+    watch.onCD[name] = nil
 end
 
-local function AddToQueue(watch, name)
+local function AddToQueue(watch, name, isOnCooldown)
     RemoveFromQueue(watch, name)
     watch.readyQ[#watch.readyQ + 1] = { name = name }
     watch.hasEntry[name] = true
+    if isOnCooldown then watch.onCD[name] = true else watch.onCD[name] = nil end
+end
+
+-- when a player kicks: push to bottom & mark as on‑CD (red)
+local function MarkUsed(watch, name)
+    if not watch.hasEntry[name] then return end
+    -- remove then re‑add at bottom with on‑CD flag
+    RemoveFromQueue(watch, name)
+    AddToQueue(watch, name, true)
 end
 
 local function UpdateDisplayFor(guid)
@@ -130,8 +137,15 @@ local function UpdateDisplayFor(guid)
     for _, entry in ipairs(watch.readyQ) do
         shown = shown + 1
         if shown <= MAX_LINES then
-            f.lines[shown]:SetText(entry.name)
-            f.lines[shown]:Show()
+            local txtObj = f.lines[shown]
+            txtObj:SetText(entry.name)
+            -- colour: red while on cooldown, white otherwise
+            if watch.onCD[entry.name] then
+                txtObj:SetTextColor(1, 0, 0)
+            else
+                txtObj:SetTextColor(1, 1, 1)
+            end
+            txtObj:Show()
         end
     end
     for i = shown + 1, MAX_LINES do f.lines[i]:Hide() end
@@ -150,29 +164,30 @@ local function Send(msg)
 end
 
 --------------------------------------------------------------------------------
--- event engine ----------------------------------------------------------------
+-- polling (local player cooldown) ---------------------------------------------
 --------------------------------------------------------------------------------
-local ev = CreateFrame("Frame")
-C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
-
--- local poll timer (cooldown readiness)
+local pollFrame = CreateFrame("Frame")
 local pollElapsed = 0
-local function Poll_OnUpdate(_, dt)
-    pollElapsed = pollElapsed + dt; if pollElapsed < UPDATE_INTERVAL then return end
+pollFrame:SetScript("OnUpdate", function(_, dt)
+    pollElapsed = pollElapsed + dt
+    if pollElapsed < UPDATE_INTERVAL then return end
     pollElapsed = 0
+
     if not interruptName then return end
     local start, dur = GetSpellCooldown(interruptName)
     local ready = (start == 0) or (dur == 0)
     if not ready then return end
 
-    -- only broadcast if our current target is watched
+    -- broadcast ready only if current target is watched
     local guid = UnitExists("target") and UnitGUID("target") or nil
-    if guid and watchList[guid] and not watchList[guid].hasEntry[playerName] then
-        Send("READY:" .. guid)
-        AddToQueue(watchList[guid], playerName)
-        UpdateDisplayFor(guid)
+    if guid and watchList[guid] then
+        if not watchList[guid].hasEntry[playerName] or watchList[guid].onCD[playerName] then
+            Send("READY:" .. guid)
+            AddToQueue(watchList[guid], playerName, false)
+            UpdateDisplayFor(guid)
+        end
     end
-end
+end)
 
 --------------------------------------------------------------------------------
 -- slash commands --------------------------------------------------------------
@@ -182,7 +197,7 @@ SlashCmdList["KICKSYNC"] = function(msg)
     msg = msg:lower():trim()
     if msg == "add" then
         if not UnitExists("target") or not UnitCanAttack("player", "target") then
-            print("|cff33ff99KickSync|r: You must target an enemy first.")
+            print("|cff33ff99KickSync|r: Target an enemy first.")
             return
         end
         local guid = UnitGUID("target")
@@ -191,13 +206,13 @@ SlashCmdList["KICKSYNC"] = function(msg)
             return
         end
         local mobName = UnitName("target") or "Unknown"
-        local w = {
+        watchList[guid] = {
             mobName  = mobName,
             frame    = CreateWatchFrame(guid, mobName),
             readyQ   = {},
-            hasEntry = {}
+            hasEntry = {},
+            onCD     = {},
         }
-        watchList[guid] = w
         addGUIDOrdered(guid)
         LayoutFrames()
         print("KickSync: Now watching " .. mobName)
@@ -209,12 +224,12 @@ SlashCmdList["KICKSYNC"] = function(msg)
         local guid = UnitGUID("target")
         local w = watchList[guid]
         if not w then
-            print("KickSync: that target isn't on your watch‑list")
+            print("KickSync: that target isn't watched.")
             return
         end
         w.frame:Hide(); w.frame:SetParent(nil)
         watchList[guid] = nil
-        for i = #orderedGUIDs, 1, -1 do if orderedGUIDs[i] == guid then table.remove(orderedGUIDs, i) end end
+        removeGUIDOrdered(guid)
         LayoutFrames()
         print("KickSync: removed " .. UnitName("target"))
     elseif msg == "clear" then
@@ -225,26 +240,36 @@ SlashCmdList["KICKSYNC"] = function(msg)
         print("KickSync: cleared all watched targets")
     elseif msg == "reset" then
         for _, guid in ipairs(orderedGUIDs) do
-            watchList[guid].frame:ClearAllPoints(); watchList[guid].frame:SetPoint("LEFT", 20, 0)
+            watchList[guid].frame:ClearAllPoints()
+            watchList[guid].frame:SetPoint("LEFT", 20, 0)
         end
     else
         print(
-            "|cff33ff99KickSync|r commands:\n  /ks add     – watch current enemy\n  /ks remove  – stop watching target\n  /ks clear   – stop watching everyone\n  /ks reset   – reset frame positions")
+        "|cff33ff99KickSync|r commands:\n  /ks add     – watch current enemy\n  /ks remove  – stop watching target\n  /ks clear   – stop watching everyone\n  /ks reset   – reset frame positions")
     end
 end
 
 --------------------------------------------------------------------------------
 -- event handling --------------------------------------------------------------
 --------------------------------------------------------------------------------
+local ev = CreateFrame("Frame")
+ev:RegisterEvent("CHAT_MSG_ADDON")
+ev:RegisterEvent("GROUP_ROSTER_UPDATE")
+ev:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
+C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
+
 ev:SetScript("OnEvent", function(_, event, ...)
     if event == "CHAT_MSG_ADDON" then
-        local prefix, msg, _, sender = ...; if prefix ~= PREFIX or sender == playerName then return end
+        local prefix, msg, _, sender = ...
+        if prefix ~= PREFIX or sender == playerName then return end
         local cmd, guid = msg:match("^(%u+):(.+)$")
-        local w = watchList[guid]; if not w then return end -- ignore if not watched
+        local w = watchList[guid]; if not w then return end
         if cmd == "READY" then
-            AddToQueue(w, sender); UpdateDisplayFor(guid)
+            AddToQueue(w, sender, false)
+            UpdateDisplayFor(guid)
         elseif cmd == "USED" then
-            RemoveFromQueue(w, sender); UpdateDisplayFor(guid)
+            MarkUsed(w, sender)
+            UpdateDisplayFor(guid)
         end
     elseif event == "GROUP_ROSTER_UPDATE" then
         for guid, w in pairs(watchList) do
@@ -261,15 +286,16 @@ ev:SetScript("OnEvent", function(_, event, ...)
             local guid = UnitGUID("target")
             if guid and watchList[guid] then
                 Send("USED:" .. guid)
-                RemoveFromQueue(watchList[guid], playerName)
+                MarkUsed(watchList[guid], playerName)
                 UpdateDisplayFor(guid)
+
                 local s, d = GetSpellCooldown(interruptName)
                 if d and d > 0 then
                     C_Timer.After(d + 0.1, function()
-                        local g = UnitGUID("target")
+                        local g = guid -- same guid, not necessarily current target when CD ready
                         if g and watchList[g] then
                             Send("READY:" .. g)
-                            AddToQueue(watchList[g], playerName)
+                            AddToQueue(watchList[g], playerName, false)
                             UpdateDisplayFor(g)
                         end
                     end)
@@ -278,10 +304,3 @@ ev:SetScript("OnEvent", function(_, event, ...)
         end
     end
 end)
-
--- register events after slash handler defined
-for _, e in ipairs({ "CHAT_MSG_ADDON", "GROUP_ROSTER_UPDATE", "UNIT_SPELLCAST_SUCCEEDED" }) do ev:RegisterEvent(e) end
-
--- start polling
-local pollFrame = CreateFrame("Frame")
-pollFrame:SetScript("OnUpdate", Poll_OnUpdate)
