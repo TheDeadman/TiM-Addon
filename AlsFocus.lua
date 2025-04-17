@@ -7,7 +7,9 @@ AlsFocusFrame:Hide()
 AlsFocusFrame:SetBackdrop({
     bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
     edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-    tile = true, tileSize = 32, edgeSize = 32,
+    tile = true,
+    tileSize = 32,
+    edgeSize = 32,
     insets = { left = 8, right = 8, top = 8, bottom = 8 }
 })
 AlsFocusFrame:SetBackdropColor(0, 0, 0, 1)

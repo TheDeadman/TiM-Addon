@@ -3,4 +3,9 @@
 ## Notes: Kick and Focus Helpers
 ## Author: Al
 ## Version: 1.0
+
 AlsFocus.lua
+AlsKickHelper.lua
+lib/RangeCheck.lua
+lib/InterruptAbility.lua
+debug/SpellId.lua
