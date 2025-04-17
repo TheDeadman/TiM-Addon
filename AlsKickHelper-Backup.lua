@@ -23,29 +23,34 @@ local playerName      = UnitName("player")
 --------------------------------------------------------------------------------
 -- {
 --     onCd = bool,
---     watching = guid,
---     isTargeting = bool,
---     isInRange = bool,
+--     watching = { guid, guid, ... },
+--     target = {
+--         mobGuid = guid,
+--         inRange = bool
+--     },
 --     readyTime = float
 -- }
 
-local selfWatchData   = {
-    onCD = AlsTiMRange.isOnCD,
-    watching = nil,
-    isTargeting = false,
-    isInRange = false,
-    readyTime = nil
-}
+--------------------------------------------------------------------------------
+-- watch‑list data structure ---------------------------------------------------
+--------------------------------------------------------------------------------
+--  watchList[guid] = {
+--      mobName   = string,
+--      frame     = Frame,
+--      readyQ    = { {name=string} , ... },
+--      hasEntry  = { [name]=true },
+--      onCD      = { [name]=true }   -- true while spell on cooldown (red text)
+--      selfWatchData = WatchData
+--  }
+local watchList       = {}
+
 
 --------------------------------------------------------------------------------
 -- watchers-list data structure ---------------------------------------------------
 --------------------------------------------------------------------------------
 -- watchersList[guid] = WatchData
-local watcherList     = {}
+local watcherList  = {}
 
-local function AddToWatch()
-
-end
 -- ordered list of GUIDs so that frames are stacked consistently
 local orderedGUIDs = {}
 local function addGUIDOrdered(guid)
@@ -216,19 +221,15 @@ SlashCmdList["KICKSYNC"] = function(msg)
             return
         end
         local mobName = UnitName("target") or "Unknown"
-
-        selfWatchData.watching[guid] = { guid = guid, name = mobName }
-
-        Send("WATCHDATA: " .. selfWatchData)
-        -- watchList[guid] = {
-        --     mobName  = mobName,
-        --     frame    = CreateWatchFrame(guid, mobName),
-        --     readyQ   = {},
-        --     hasEntry = {},
-        --     onCD     = {},
-        -- }
-        -- addGUIDOrdered(guid)
-        -- LayoutFrames()
+        watchList[guid] = {
+            mobName  = mobName,
+            frame    = CreateWatchFrame(guid, mobName),
+            readyQ   = {},
+            hasEntry = {},
+            onCD     = {},
+        }
+        addGUIDOrdered(guid)
+        LayoutFrames()
         print("KickSync: Now watching " .. mobName)
     elseif msg == "remove" then
         if not UnitExists("target") then
@@ -243,7 +244,6 @@ SlashCmdList["KICKSYNC"] = function(msg)
         end
         w.frame:Hide(); w.frame:SetParent(nil)
         watchList[guid] = nil
-        selfWatchData.watching = nil
         removeGUIDOrdered(guid)
         LayoutFrames()
         print("KickSync: removed " .. UnitName("target"))
@@ -251,14 +251,13 @@ SlashCmdList["KICKSYNC"] = function(msg)
         for guid, w in pairs(watchList) do
             w.frame:Hide(); w.frame:SetParent(nil)
         end
-        wipe(selfWatchData.watching)
         wipe(watchList); wipe(orderedGUIDs)
         print("KickSync: cleared all watched targets")
     elseif msg == "reset" then
-        -- for _, guid in ipairs(orderedGUIDs) do
-        --     watchList[guid].frame:ClearAllPoints()
-        --     watchList[guid].frame:SetPoint("LEFT", 20, 0)
-        -- end
+        for _, guid in ipairs(orderedGUIDs) do
+            watchList[guid].frame:ClearAllPoints()
+            watchList[guid].frame:SetPoint("LEFT", 20, 0)
+        end
     else
         print(
             "|cff33ff99KickSync|r commands:\n  /ks add     – watch current enemy\n  /ks remove  – stop watching target\n  /ks clear   – stop watching everyone\n  /ks reset   – reset frame positions")
@@ -286,8 +285,6 @@ ev:SetScript("OnEvent", function(_, event, ...)
         elseif cmd == "USED" then
             MarkUsed(w, sender)
             UpdateDisplayFor(guid)
-        elseif cmd == "WATCHDATA" then
-            print("WATCH DATA")
         end
     elseif event == "GROUP_ROSTER_UPDATE" then
         for guid, w in pairs(watchList) do

@@ -4,8 +4,8 @@
 ## Author: Al
 ## Version: 1.0
 
+lib/RangeAndCDCheck.lua
+lib/InterruptAbility.lua
 AlsFocus.lua
 AlsKickHelper.lua
-lib/RangeCheck.lua
-lib/InterruptAbility.lua
 debug/SpellId.lua
