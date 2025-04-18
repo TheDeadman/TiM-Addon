@@ -9,6 +9,8 @@ local f                = CreateFrame("Frame")
 local playerName       = UnitName("player")
 local myKickTargetGUID = nil -- your target’s GUID
 local assignments      = {}  -- [playerName] = guid
+local invalid          = {}  -- [playerName] = true  ⇒  user is no longer a valid kicker
+local assignTime       = {}  -- [playerName] = timestamp (when SET or VALID was sent)
 
 ------------------------------------------------------------
 --  Helpers
@@ -65,17 +67,49 @@ local function UpdateUI()
         return
     end
 
-    local list = {}
+    local good, bad = {}, {}
     for p, g in pairs(assignments) do
-        if g == guid then tinsert(list, p) end
+        if g == guid then
+            if invalid[p] then
+                tinsert(bad, p)
+            else
+                tinsert(good, p)
+            end
+        end
     end
-    table.sort(list)
+
+    table.sort(good, function(a, b) -- sort valid by timestamp
+        return (assignTime[a] or 0) < (assignTime[b] or 0)
+    end)
+    table.sort(bad) -- invalid alphabetical
+
+    local list = good
+    for _, p in ipairs(bad) do tinsert(list, p) end
 
     for i = 1, #ui.lines do
-        ui.lines[i]:SetText(list[i] or "")
+        local name = list[i]
+        if name then
+            if invalid[name] then
+                ui.lines[i]:SetText("|cffff2020" .. name .. "|r")
+            else
+                ui.lines[i]:SetText(name)
+            end
+        else
+            ui.lines[i]:SetText("")
+        end
     end
     ui:SetHeight(28 + #list * 14)
     ui:Show()
+end
+-----------------------------------------------------------------
+-- 5.  HOUSE‑CLEANING WHEN ROSTER CHANGES OR YOU CLEAR ----------
+-----------------------------------------------------------------
+--  inside GROUP_ROSTER_UPDATE handler (unchanged part of file):
+for p in pairs(assignments) do
+    if not inGroup(p) then
+        assignments[p] = nil
+        invalid[p]     = nil
+    end
 end
 
 ------------------------------------------------------------
@@ -98,30 +132,57 @@ end
 local function SendAddon(type, payload)
     local channel = getChannel()
     if not channel then return end
-    local msg = type == "SET" and ("SET:" .. payload)
+    local msg = (type == "SET" and ("SET:" .. payload))
         or type == "CLEAR" and "CLEAR"
         or type == "QUERY" and "QUERY"
+        or type == "INVALID" and "INVALID"
+        or (type == "VALID" and ("VALID:" .. payload))
     if msg then C_ChatInfo.SendAddonMessage(PREFIX, msg, channel) end
 end
 
--- incoming messages ------------------------------------------
---  SET:<guid>  – sender’s current kick target
---  CLEAR       – sender cleared their target
---  QUERY       – “please broadcast your current target”
+function Kicker_SendInvalid()  -- <‑‑ you call this
+    SendAddon("INVALID")       -- broadcast to the group
+    invalid[playerName] = true -- mark yourself locally
+    UpdateUI()
+end
+
+-- Call this when the player’s interrupt is available again.
+-- call when you are BACK and ready to kick
+function Kicker_SendValid()
+    local now = GetTime()
+    SendAddon("VALID", tostring(now))
+    invalid[playerName] = nil
+    assignTime[playerName] = now
+    UpdateUI()
+end
+
+-----------------------------------------------------------------
+-- 3.  UPDATE THE MESSAGE HANDLER -------------------------------
+-----------------------------------------------------------------
 local function HandleAddonMessage(msg, sender)
     if sender == playerName then return end
 
     if msg == "CLEAR" then
         assignments[sender] = nil
+        invalid[sender]     = nil
         UpdateUI()
-    elseif msg:sub(1, 4) == "SET:" then
-        local guid = msg:sub(5)
+    elseif msg:sub(1, 4) == "SET:" then -- "SET:<guid>:<time>"
+        local rest          = msg:sub(5)
+        local guid, tstr    = rest:match("([^:]+):?(.*)")
         assignments[sender] = guid
+        invalid[sender]     = nil
+        assignTime[sender]  = tonumber(tstr) or GetTime()
         UpdateUI()
     elseif msg == "QUERY" then
-        if myKickTargetGUID then
-            SendAddon("SET", myKickTargetGUID) -- answer with your target
-        end
+        if myKickTargetGUID then SendAddon("SET", myKickTargetGUID) end
+    elseif msg == "INVALID" then -- unchanged
+        invalid[sender] = true
+        UpdateUI()
+    elseif msg:sub(1, 6) == "VALID:" then -- "VALID:<time>"
+        local t            = tonumber(msg:sub(7)) or GetTime()
+        invalid[sender]    = nil
+        assignTime[sender] = t
+        UpdateUI()
     end
 end
 
@@ -138,8 +199,10 @@ SlashCmdList.KICKER = function(msg)
                 myKickTargetGUID        = guid
                 assignments[playerName] = guid
                 print("|cff00ff00[Kicker]|r kick target set to |cffffff00" .. UnitName("target") .. "|r.")
-                SendAddon("SET", guid) -- tell the group your new target
-                SendAddon("QUERY") -- ask everyone else to reply
+                local now = GetTime()
+                SendAddon("SET", guid .. ":" .. now) -- new format with time
+                assignTime[playerName] = now
+                SendAddon("QUERY")                   -- ask others for their state
                 UpdateUI()
             else
                 print("|cff00ff00[Kicker]|r Could not read target GUID.")
@@ -155,6 +218,10 @@ SlashCmdList.KICKER = function(msg)
             SendAddon("CLEAR")
             UpdateUI()
         end
+    elseif msg == "invalid" then
+        Kicker_SendInvalid()
+    elseif msg == "valid" then
+        Kicker_SendValid()
     else
         print("|cff00ff00[Kicker]|r usage:")
         print("  /kicker add   – mark your target as kick target")

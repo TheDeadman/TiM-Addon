@@ -60,12 +60,6 @@ local function FindGroupUnit(guid)
     end
 end
 
-local function tableLength(T)
-    local count = 0
-    for _ in pairs(T) do count = count + 1 end
-    return count
-end
-
 ---------------------------------------------------------------------
 -- INTERNAL DATA
 ---------------------------------------------------------------------
@@ -103,10 +97,10 @@ end
 -- FRAME CREATION / UPDATE
 ---------------------------------------------------------------------
 local function NewFocusFrame(data)
-    local f = CreateFrame("Button", "MF_Frame" .. data.guid, UIParent,
+    local f = CreateFrame("Button", "MF_Frame" .. data.index, UIParent,
         "SecureActionButtonTemplate,BackdropTemplate")
     f:SetSize(FRAME_W, FRAME_H)
-    f:SetPoint("TOP", anchor, "BOTTOM", 0, -(tableLength(MF.frames)) * FRAME_H)
+    f:SetPoint("TOP", anchor, "BOTTOM", 0, -(data.index - 1) * FRAME_H)
     f:SetFrameStrata("MEDIUM")
     f:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -171,7 +165,7 @@ local function NewFocusFrame(data)
     end)
     f:SetScript("OnLeave", GameTooltip_Hide)
 
-    MF.frames[data.guid] = f
+    MF.frames[data.index] = f
     UpdateFocusFrame(f, data.unitID)
     f:Show()
 end
@@ -197,16 +191,8 @@ function UpdateFocusFrame(f, unitName)
     UpdateDebuffs(f)
 end
 
-local function ReorderFrames()
-    local count = 0
-    for _, f in pairs(MF.frames) do
-        f:SetPoint("TOP", anchor, "BOTTOM", 0, -(count) * FRAME_H)
-        count = count + 1
-    end
-end
-
 ---------------------------------------------------------------------
--- CORE OPERATIONS
+-- CORE OPERATIONS (unchanged)
 ---------------------------------------------------------------------
 function MF:Add()
     if not UnitExists("target") then
@@ -224,7 +210,7 @@ function MF:Add()
         guid   = guid,
         name   = UnitName("target"),
         unitID = FindGroupUnit(guid),
-        -- index  = #self.frames + 1,
+        index  = #self.frames + 1,
     }
     self.list[guid] = data
     NewFocusFrame(data)
@@ -236,27 +222,26 @@ function MF:Remove(arg)
     end
     local guid
     if tonumber(arg) then
-        -- for g, d in pairs(self.list) do if d.index == tonumber(arg) then guid = g end end
+        for g, d in pairs(self.list) do if d.index == tonumber(arg) then guid = g end end
     else
         for g, d in pairs(self.list) do if d.name:lower() == arg:lower() then guid = g end end
     end
     if not guid then
         print("|cff33ff99MF|r: Focus target not found."); return
     end
-    -- local idx = self.list[guid].index
-    if MF.frames[guid] then
-        UnregisterUnitWatch(MF.frames[guid])
-        MF.frames[guid]:Hide()
-    end
-    MF.frames[guid] = nil
+    local idx = self.list[guid].index
+    if MF.frames[idx] then MF.frames[idx]:Hide() end
+    table.remove(MF.frames, idx)
     MF.list[guid] = nil
-
-    ReorderFrames()
+    for i, frame in ipairs(MF.frames) do
+        frame.data.index = i
+        frame:SetPoint("TOP", anchor, "BOTTOM", 0, -(i - 1) * FRAME_H)
+        frame:SetName("MF_Frame" .. i)
+    end
 end
 
 function MF:ClearAll()
-    for _, frame in pairs(self.frames) do
-        UnregisterUnitWatch(frame)
+    for _, frame in ipairs(self.frames) do
         frame:Hide()
     end
     wipe(self.frames); wipe(self.list)
@@ -281,11 +266,11 @@ e:SetScript("OnEvent", function(_, ev, arg1)
         print("UNIT HEALTH FREQUENT? " .. guid)
 
         local data = guid and MF.list[guid]
-        if data then UpdateFocusFrame(MF.frames[data.guid], arg1) end
+        if data then UpdateFocusFrame(MF.frames[data.index], arg1) end
     elseif ev == "GROUP_ROSTER_UPDATE" then
         for guid, data in pairs(MF.list) do
             data.unitID = FindGroupUnit(guid)
-            local f = MF.frames[data.guid]
+            local f = MF.frames[data.index]
             if f and data.unitID then
                 f:SetAttribute("unit", data.unitID)
                 f:SetAttribute("type1", "target")
