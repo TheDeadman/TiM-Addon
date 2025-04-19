@@ -1,6 +1,6 @@
 ## Interface: 11403
 ## Title: Al's Time is Money Addon
-## Notes: Kick and Focus Helpers
+## Notes: Focus Helpers
 ## Author: Al
 ## Version: 1.0
 

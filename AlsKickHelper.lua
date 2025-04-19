@@ -1,4 +1,4 @@
--- Kicker 1.1.0 – synchronises “kick targets” for the whole group
+-- TimKick 1.1.0 – synchronises “kick targets” for the whole group
 -----------------------------------------------------------------
 local addonName, addon = ...
 local f                = CreateFrame("Frame")
@@ -9,8 +9,11 @@ local f                = CreateFrame("Frame")
 local playerName       = UnitName("player")
 local myKickTargetGUID = nil -- your target’s GUID
 local assignments      = {}  -- [playerName] = guid
-local invalid          = {}  -- [playerName] = true  ⇒  user is no longer a valid kicker
+local invalid          = {}  -- [playerName] = true  ⇒  user is no longer a valid timkick
 local assignTime       = {}  -- [playerName] = timestamp (when SET or VALID was sent)
+local isReady          = false
+
+AlsTiMKickHelper       = {}
 
 ------------------------------------------------------------
 --  Helpers
@@ -24,7 +27,7 @@ end
 --  UI
 ------------------------------------------------------------
 local function CreateUI()
-    local ui = CreateFrame("Frame", "KickerFrame", UIParent, "BackdropTemplate")
+    local ui = CreateFrame("Frame", "TimKickFrame", UIParent, "BackdropTemplate")
     ui:SetSize(160, 60)
     ui:SetPoint("CENTER", 0, 200)
     ui:SetMovable(true)
@@ -140,20 +143,34 @@ local function SendAddon(type, payload)
     if msg then C_ChatInfo.SendAddonMessage(PREFIX, msg, channel) end
 end
 
-function Kicker_SendInvalid()  -- <‑‑ you call this
-    SendAddon("INVALID")       -- broadcast to the group
-    invalid[playerName] = true -- mark yourself locally
-    UpdateUI()
+function AlsTiMKickHelper.SendInvalid() -- <‑‑ you call this
+    if isReady then
+        SendAddon("INVALID")            -- broadcast to the group
+        invalid[playerName] = true      -- mark yourself locally
+        isReady = false
+        UpdateUI()
+    end
 end
 
 -- Call this when the player’s interrupt is available again.
 -- call when you are BACK and ready to kick
-function Kicker_SendValid()
-    local now = GetTime()
-    SendAddon("VALID", tostring(now))
-    invalid[playerName] = nil
-    assignTime[playerName] = now
-    UpdateUI()
+function AlsTiMKickHelper.SendValid()
+    if not isReady then
+        local now = GetTime()
+        SendAddon("VALID", tostring(now))
+        invalid[playerName] = nil
+        assignTime[playerName] = now
+        isReady = true
+        UpdateUI()
+    end
+end
+
+function AlsTiMKickHelper.SendUpdate()
+    if AlsTiMRange.isInRange and AlsTiMRange.isOnCD and AlsTiMRange.isTargettingEnemy then
+        AlsTiMKickHelper.SendValid()
+    else
+        AlsTiMKickHelper.SendInvalid()
+    end
 end
 
 -----------------------------------------------------------------
@@ -189,7 +206,7 @@ end
 ------------------------------------------------------------
 --  Slash‑command logic
 ------------------------------------------------------------
-SLASH_KICKER1 = "/kicker"
+SLASH_KICKER1 = "/timkick"
 SlashCmdList.KICKER = function(msg)
     msg = trim(string.lower(msg or ""))
     if msg == "add" then
@@ -198,34 +215,34 @@ SlashCmdList.KICKER = function(msg)
             if guid then
                 myKickTargetGUID        = guid
                 assignments[playerName] = guid
-                print("|cff00ff00[Kicker]|r kick target set to |cffffff00" .. UnitName("target") .. "|r.")
+                print("|cff00ff00[TimKick]|r kick target set to |cffffff00" .. UnitName("target") .. "|r.")
                 local now = GetTime()
                 SendAddon("SET", guid .. ":" .. now) -- new format with time
                 assignTime[playerName] = now
                 SendAddon("QUERY")                   -- ask others for their state
                 UpdateUI()
             else
-                print("|cff00ff00[Kicker]|r Could not read target GUID.")
+                print("|cff00ff00[TimKick]|r Could not read target GUID.")
             end
         else
-            print("|cff00ff00[Kicker]|r You must target an enemy first.")
+            print("|cff00ff00[TimKick]|r You must target an enemy first.")
         end
     elseif msg == "clear" then
         if myKickTargetGUID then
             myKickTargetGUID        = nil
             assignments[playerName] = nil
-            print("|cff00ff00[Kicker]|r kick target cleared.")
+            print("|cff00ff00[TimKick]|r kick target cleared.")
             SendAddon("CLEAR")
             UpdateUI()
         end
     elseif msg == "invalid" then
-        Kicker_SendInvalid()
+        AlsTimKickHelper.SendInvalid()
     elseif msg == "valid" then
-        Kicker_SendValid()
+        AlsTiMKickHelper.SendValid()
     else
-        print("|cff00ff00[Kicker]|r usage:")
-        print("  /kicker add   – mark your target as kick target")
-        print("  /kicker clear – remove your kick target")
+        print("|cff00ff00[TimKick]|r usage:")
+        print("  /timkick add   – mark your target as kick target")
+        print("  /timkick clear – remove your kick target")
     end
 end
 

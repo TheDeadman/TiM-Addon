@@ -22,7 +22,7 @@ function AlsTiMRange.CheckKickRange()
             AlsTiMRange.isInRange = false
         end
     end
-    print("IS IN RANGE: " .. tostring(AlsTiMRange.isInRange))
+    -- print("IS IN RANGE: " .. tostring(AlsTiMRange.isInRange))
 end
 
 function AlsTiMRange.CheckCD()

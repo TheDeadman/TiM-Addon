@@ -1,8 +1,4 @@
---[[-----------------------------------------------------------------
- MultiFocus – v1.1  (2025‑04‑17)
-  • Shows current / max health (and %)
-  • Displays up‑to‑eight debuffs cast by *you* on the focus unit
- -------------------------------------------------------------------]]
+-- Multi Focus 1.0
 
 local ADDON_NAME = ...
 local MF         = {}
@@ -13,14 +9,12 @@ print(ADDON_NAME)
 ---------------------------------------------------------------------
 local MAX_FOCUS     = 5  -- raise for more frames
 local FRAME_W       = 130
-local FRAME_H       = 38 -- bigger to fit debuff icons
+local FRAME_H       = 50 -- bigger to fit debuff icons
 local HEALTHBAR_H   = 18
-local ICON_SIZE     = 16
+local ICON_SIZE     = 20
 local ICONS_PER_ROW = 8
 
----------------------------------------------------------------------
--- ANCHOR (drag to move – /mf lock toggles)
----------------------------------------------------------------------
+-- Anchors
 local anchor        = CreateFrame("Frame", "MF_Anchor", UIParent, "BackdropTemplate")
 anchor:SetSize(FRAME_W, HEALTHBAR_H)
 anchor:SetPoint("CENTER", UIParent, "CENTER", 300, 0)
@@ -41,11 +35,9 @@ anchor:SetBackdrop({
 anchor:SetBackdropColor(0, 0, 0, .35)
 anchor.text = anchor:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 anchor.text:SetPoint("CENTER")
-anchor.text:SetText("MultiFocus (drag)")
+anchor.text:SetText("TiMFocus (drag)")
 
----------------------------------------------------------------------
--- UTIL
----------------------------------------------------------------------
+-- Utils
 local function ColorGradient(p)
     if p <= .5 then return 1, p * 2, 0 end
     return 2 - p * 2, 1, 0
@@ -66,42 +58,36 @@ local function tableLength(T)
     return count
 end
 
----------------------------------------------------------------------
--- INTERNAL DATA
----------------------------------------------------------------------
-MF.list   = {} -- [guid] = data
-MF.frames = {} -- ordered array of frame objects
+-- Internal tracking data
+MF.list   = {}
+MF.frames = {}
 
----------------------------------------------------------------------
--- DEBUFF UPDATE
----------------------------------------------------------------------
-local function UpdateDebuffs(f)
-    if not f.data.unitID or not UnitExists(f.data.unitID) then
-        for i = 1, ICONS_PER_ROW do f.debuffIcons[i]:Hide() end
-        return
-    end
-
+-- Debuff Updater
+local function UpdateDebuffs(f, unitName)
     local shown = 0
     for i = 1, 40 do
-        local name, icon, _, _, debuffType, duration, expires, caster = UnitDebuff(f.data.unitID, i)
+        local name, spellId, _, debuffType, duration, expirationTime, unitCaster, _, _, someId = UnitDebuff(unitName, i)
         if not name then break end
-        if caster == "player" then
+        if unitCaster == "player" then
             shown = shown + 1
             if shown <= ICONS_PER_ROW then
-                local tex = f.debuffIcons[shown]
-                print("UPDATE SHOW?")
-                tex:SetTexture(icon); tex:Show()
+                local icon = f.debuffIcons[shown].icon
+                local iconTexture = f.debuffIcons[shown].texture
+                local progress = f.debuffIcons[shown].progress
+                iconTexture:SetTexture(spellId)
+                progress:SetCooldown(expirationTime - duration, duration)
+                icon:Show()
             end
         end
     end
-    for i = shown + 1, ICONS_PER_ROW do -- hide unused
-        f.debuffIcons[i]:Hide()
+
+    -- Hide unused icons
+    for i = shown + 1, ICONS_PER_ROW do
+        f.debuffIcons[i].icon:Hide()
     end
 end
 
----------------------------------------------------------------------
--- FRAME CREATION / UPDATE
----------------------------------------------------------------------
+-- Frame Creation
 local function NewFocusFrame(data)
     local f = CreateFrame("Button", "MF_Frame" .. data.guid, UIParent,
         "SecureActionButtonTemplate,BackdropTemplate")
@@ -119,9 +105,7 @@ local function NewFocusFrame(data)
     f:SetBackdropColor(0, 0, 0, .55)
     f.data = data
 
-    -------------------------------------------------------------------
-    -- secure click behaviour
-    -------------------------------------------------------------------
+    -- Secure click stuff
     if data.unitID then
         f:SetAttribute("unit", data.unitID)
         f:SetAttribute("type1", "target")
@@ -132,9 +116,7 @@ local function NewFocusFrame(data)
         f:SetAttribute("macrotext", "/targetexact " .. data.name)
     end
 
-    -------------------------------------------------------------------
-    -- HEALTH BAR + TEXT
-    -------------------------------------------------------------------
+    -- Health bar and text
     local hp = CreateFrame("StatusBar", nil, f)
     hp:SetPoint("TOPLEFT", 2, -2)
     hp:SetPoint("TOPRIGHT", -2, -2)
@@ -143,58 +125,64 @@ local function NewFocusFrame(data)
     hp:SetMinMaxValues(0, 1)
     f.hp = hp
 
-    f.nameText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f.nameText = hp:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     f.nameText:SetPoint("LEFT", 4, 0)
     f.nameText:SetText(data.name)
 
-    f.hpValue = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f.hpValue = hp:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     f.hpValue:SetPoint("RIGHT", -4, 0)
 
-    -------------------------------------------------------------------
-    -- DEBUFF ICONS
-    -------------------------------------------------------------------
+    -- Debuff icons
     f.debuffIcons = {}
     for i = 1, ICONS_PER_ROW do
-        local icon = f:CreateTexture(nil, "OVERLAY")
-        icon:SetSize(ICON_SIZE, ICON_SIZE)
-        icon:SetPoint("TOPLEFT", 2 + (i - 1) * (ICON_SIZE + 2), -HEALTHBAR_H - 2)
-        icon:Hide()
-        f.debuffIcons[i] = icon
+        local icon = CreateFrame("Frame", "CD_ICON", UIParent)
+        icon:SetSize(20, 20)
+        icon:SetPoint("TOPLEFT", f, 2 + (i - 1) * (ICON_SIZE + 2), -HEALTHBAR_H - 2)
+        icon:Show()
+
+        local texture = icon:CreateTexture(nil, "OVERLAY")
+        texture:SetTexture(20920)
+        texture:SetAllPoints(true)
+
+        local iconProgress = CreateFrame("Cooldown", nil, icon, "CooldownFrameTemplate")
+        iconProgress:SetAllPoints(icon)
+
+        f.debuffIcons[i] = { icon = icon, texture = texture, progress = iconProgress }
     end
 
     -- simple tooltip
     f:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine(self.data.name)
-        print("ON ENTER SHOW")
         GameTooltip:Show()
     end)
     f:SetScript("OnLeave", GameTooltip_Hide)
 
     MF.frames[data.guid] = f
-    UpdateFocusFrame(f, data.unitID)
+    if data.unitID then
+        UpdateFocusFrame(f, data.unitID)
+    else
+        UpdateFocusFrame(f, "target")
+    end
     f:Show()
 end
 
 function UpdateFocusFrame(f, unitName)
     local guid = f.data.guid
-    -- print("UNIT ID? " .. unit)
-    print("GUID: " .. f.data.guid)
     if guid and UnitExists(unitName) and UnitGUID(unitName) == f.data.guid then
-        print("HERE")
         local cur, max = UnitHealth(unitName), UnitHealthMax(unitName)
         f.hp:SetMinMaxValues(0, max); f.hp:SetValue(cur)
         f.hp:SetStatusBarColor(ColorGradient(max > 0 and cur / max or 0))
-        f.hpValue:SetFormattedText("%d/%d (%.0f%%)", cur, max, (max > 0 and cur / max * 100 or 0))
+        f.hpValue:SetFormattedText("(%.0f%%)", (max > 0 and cur / max * 100 or 0))
         f.nameText:SetTextColor(1, 1, 1)
     else
-        print("NOT HERE")
-        f.hp:SetMinMaxValues(0, 1); f.hp:SetValue(0)
+        f.hp:SetMinMaxValues(0, 1)
+        f.hp:SetValue(0)
         f.hp:SetStatusBarColor(.4, .4, .4)
         f.hpValue:SetText("")
         f.nameText:SetTextColor(.6, .6, .6)
     end
-    UpdateDebuffs(f)
+    UpdateDebuffs(f, unitName)
 end
 
 local function ReorderFrames()
@@ -232,7 +220,7 @@ end
 
 function MF:Remove(arg)
     if not arg or arg == "" then
-        print("|cff33ff99MF|r: /mf clear <name|index>"); return
+        print("|cff33ff99MF|r: /timfocus clear <name|index>"); return
     end
     local guid
     if tonumber(arg) then
@@ -274,11 +262,9 @@ e:RegisterEvent("GROUP_ROSTER_UPDATE")
 
 e:SetScript("OnEvent", function(_, ev, arg1)
     if ev == "PLAYER_LOGIN" then
-        print("|cff33ff99MultiFocus|r v1.1 loaded – /mf add to focus target.")
+        print("|cff33ff99TiMFocus|r v1.1 loaded – /timfocus add to focus target.")
     elseif ev == "UNIT_HEALTH_FREQUENT" or ev == "UNIT_AURA" then
-        print("UNIT HEALTH FREQUENT? " .. arg1)
         local guid = UnitGUID(arg1)
-        print("UNIT HEALTH FREQUENT? " .. guid)
 
         local data = guid and MF.list[guid]
         if data then UpdateFocusFrame(MF.frames[data.guid], arg1) end
@@ -295,18 +281,16 @@ e:SetScript("OnEvent", function(_, ev, arg1)
     end
 end)
 
----------------------------------------------------------------------
--- SLASH COMMANDS (unchanged)
----------------------------------------------------------------------
-SLASH_MULTIFOCUS1, SLASH_MULTIFOCUS2 = "/mf", "/multifocus"
+-- Slash Commands
+SLASH_MULTIFOCUS1, SLASH_MULTIFOCUS2 = "/timfocus", "/timf"
 SlashCmdList.MULTIFOCUS = function(msg)
     msg = (msg or ""):gsub("^%s*(.-)%s*$", "%1"):lower()
     if msg == "" then
-        print("|cff33ff99MultiFocus|r:",
-            "/mf add – add current target",
-            "/mf clear <name|#> – remove one",
-            "/mf clearall – remove all",
-            "/mf lock – lock/unlock frames")
+        print("|cff33ff99TiMFocus|r:",
+            "/timfocus add – add current target",
+            "/timfocus clear <name|#> – remove one",
+            "/timfocus clearall – remove all",
+            "/timfocus lock – lock/unlock frames")
     elseif msg == "add" then
         MF:Add()
     elseif msg:match("^clear%s") then
@@ -319,6 +303,6 @@ SlashCmdList.MULTIFOCUS = function(msg)
         anchor.text:SetShown(locked)
         print("|cff33ff99MF|r anchor " .. (locked and "unlocked (drag to move)." or "locked."))
     else
-        print("|cff33ff99MF|r: Unknown command – /mf for help.")
+        print("|cff33ff99MF|r: Unknown command – /timfocus for help.")
     end
 end

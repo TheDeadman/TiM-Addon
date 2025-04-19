@@ -1,7 +1,4 @@
---------------------------------------------------------------------------------
---  PartySkillLogger
---  Prints “<name> (ID: <id>)” whenever anyone in your 5‑man party uses a spell
---------------------------------------------------------------------------------
+-- Debug tool to log when someone in your party uses a skill
 local addonName = ...
 
 print("ADDON NAME: " .. addonName)
@@ -10,9 +7,7 @@ local PSL     = CreateFrame("Frame", "SpellIdFrame")
 local party   = {} -- [GUID] = true for everyone currently in party (incl. player)
 local enabled = true
 
-------------------------------------------------------------
--- Utility: rebuild party GUID table
-------------------------------------------------------------
+-- Party Table
 local function UpdatePartyTable()
     wipe(party)
 
@@ -28,9 +23,7 @@ local function UpdatePartyTable()
     end
 end
 
-------------------------------------------------------------
--- Slash command to toggle printing on/off
-------------------------------------------------------------
+-- slash commands
 SLASH_PARTYSKILLLOGGER1 = "/psl"
 SlashCmdList.PARTYSKILLLOGGER = function(msg)
     msg = msg:lower()
@@ -45,9 +38,7 @@ SlashCmdList.PARTYSKILLLOGGER = function(msg)
     end
 end
 
-------------------------------------------------------------
--- Core event handler
-------------------------------------------------------------
+
 PSL:SetScript("OnEvent", function(_, event, ...)
     if event == "GROUP_ROSTER_UPDATE" then
         UpdatePartyTable()
@@ -57,38 +48,38 @@ PSL:SetScript("OnEvent", function(_, event, ...)
     -- COMBAT_LOG_EVENT_UNFILTERED
     if not enabled then return end
 
-    print('enabled')
+    -- print('enabled')
 
     local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, spellID, spellName, spellSchool =
         CombatLogGetCurrentEventInfo()
 
     if eventType == "SPELL_CAST_SUCCESS" then
-        print("time: " .. timestamp)
-        print("eventType: " .. eventType)
-        print("hide caster: " .. tostring(hideCaster))
-        print("sourceGUID: " .. sourceGUID)
-        print("sourceName: " .. sourceName)
-        print("source flags?: " .. sourceFlags)
-        print("source Raid Flags?: " .. sourceRaidFlags)
-        print("destGUID: " .. destGUID)
-        if destName then
-            print("destName: " .. destName)
-        end
-        if destFlags then
-            print("destRaidFlags?: " .. destFlags)
-        end
-        if destRaidFlags then
-            print("destRaidFlags?: " .. destRaidFlags)
-        end
-        if spellID then
-            print("spellID: " .. spellID)
-        end
-        if spellName then
-            print("spellName: " .. spellName)
-        end
-        if spellSchool then
-            print("spellSchool: " .. spellSchool)
-        end
+        -- print("time: " .. timestamp)
+        -- print("eventType: " .. eventType)
+        -- print("hide caster: " .. tostring(hideCaster))
+        -- print("sourceGUID: " .. sourceGUID)
+        -- print("sourceName: " .. sourceName)
+        -- print("source flags?: " .. sourceFlags)
+        -- print("source Raid Flags?: " .. sourceRaidFlags)
+        -- print("destGUID: " .. destGUID)
+        -- if destName then
+        --     print("destName: " .. destName)
+        -- end
+        -- if destFlags then
+        --     print("destRaidFlags?: " .. destFlags)
+        -- end
+        -- if destRaidFlags then
+        --     print("destRaidFlags?: " .. destRaidFlags)
+        -- end
+        -- if spellID then
+        --     print("spellID: " .. spellID)
+        -- end
+        -- if spellName then
+        --     print("spellName: " .. spellName)
+        -- end
+        -- if spellSchool then
+        --     print("spellSchool: " .. spellSchool)
+        -- end
 
         -- Only SPELL_* events include spellId/name; ignore SWING_, RANGED_, etc.
         if not spellID or not spellName then return end
