@@ -27,7 +27,7 @@ end
 
 function AlsTiMRange.CheckCD()
     local start, dur, enabled = GetSpellCooldown(AlsTiMAbilities.interruptName)
-    if enabled == 1 and dur > 0 then
+    if enabled == 1 and dur > 2 then
         -- On CD
         print("ON CD")
         AlsTiMRange.isOnCD = true
@@ -41,4 +41,17 @@ InRange:RegisterEvent("SPELL_UPDATE_USABLE")
 InRange:SetScript("OnEvent", function(_, event, arg1)
     AlsTiMRange.CheckKickRange()
     AlsTiMRange.CheckCD()
+    if AlsTiMKickHelper then
+        AlsTiMKickHelper.SendUpdate()
+    end
+end)
+
+
+-- Create a timer to flash the text color every second
+C_Timer.NewTicker(0.1, function()
+    AlsTiMRange.CheckKickRange()
+    AlsTiMRange.CheckCD()
+    if AlsTiMKickHelper then
+        AlsTiMKickHelper.SendUpdate()
+    end
 end)

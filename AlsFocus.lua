@@ -1,12 +1,10 @@
--- Multi Focus 1.0
+-- Multi Focus
 
 local ADDON_NAME = ...
 local MF         = {}
 _G[ADDON_NAME]   = MF
 print(ADDON_NAME)
----------------------------------------------------------------------
--- CONFIG
----------------------------------------------------------------------
+-- config
 local MAX_FOCUS     = 5  -- raise for more frames
 local FRAME_W       = 130
 local FRAME_H       = 50 -- bigger to fit debuff icons
@@ -193,9 +191,7 @@ local function ReorderFrames()
     end
 end
 
----------------------------------------------------------------------
--- CORE OPERATIONS
----------------------------------------------------------------------
+-- core
 function MF:Add()
     if not UnitExists("target") then
         print("|cff33ff99MF|r: No target selected."); return
@@ -250,9 +246,7 @@ function MF:ClearAll()
     wipe(self.frames); wipe(self.list)
 end
 
----------------------------------------------------------------------
--- EVENTS
----------------------------------------------------------------------
+-- Events
 local e = CreateFrame("Frame")
 e:RegisterEvent("PLAYER_LOGIN")
 e:RegisterEvent("UNIT_HEALTH_FREQUENT")

@@ -1,11 +1,9 @@
--- TimKick 1.1.0 – synchronises “kick targets” for the whole group
------------------------------------------------------------------
+-- TimKick 1.0.0
+
 local addonName, addon = ...
 local f                = CreateFrame("Frame")
 
-------------------------------------------------------------
---  Internal state
-------------------------------------------------------------
+-- internal state
 local playerName       = UnitName("player")
 local myKickTargetGUID = nil -- your target’s GUID
 local assignments      = {}  -- [playerName] = guid
@@ -15,17 +13,13 @@ local isReady          = false
 
 AlsTiMKickHelper       = {}
 
-------------------------------------------------------------
---  Helpers
-------------------------------------------------------------
+-- helpers
 local function trim(s) return (s:gsub("^%s*(.-)%s*$", "%1")) end
 local function inGroup(name)
     return UnitInRaid(name) or UnitInParty(name) or name == playerName
 end
 
-------------------------------------------------------------
---  UI
-------------------------------------------------------------
+-- ui
 local function CreateUI()
     local ui = CreateFrame("Frame", "TimKickFrame", UIParent, "BackdropTemplate")
     ui:SetSize(160, 60)
@@ -104,10 +98,7 @@ local function UpdateUI()
     ui:SetHeight(28 + #list * 14)
     ui:Show()
 end
------------------------------------------------------------------
--- 5.  HOUSE‑CLEANING WHEN ROSTER CHANGES OR YOU CLEAR ----------
------------------------------------------------------------------
---  inside GROUP_ROSTER_UPDATE handler (unchanged part of file):
+-- for handling group change stuff
 for p in pairs(assignments) do
     if not inGroup(p) then
         assignments[p] = nil
@@ -115,9 +106,7 @@ for p in pairs(assignments) do
     end
 end
 
-------------------------------------------------------------
---  Networking
-------------------------------------------------------------
+-- comms
 local PREFIX = "KICKER"
 
 local function getChannel()
@@ -167,16 +156,19 @@ end
 
 function AlsTiMKickHelper.SendUpdate()
     local targetGUID = UnitGUID('target')
-    if AlsTiMRange.isInRange and AlsTiMRange.isOnCD and AlsTiMRange.isTargettingEnemy and targetGUID == myKickTargetGUID then
+    print("range: " .. tostring(AlsTiMRange.isInRange))
+    print("cd: " .. tostring(AlsTiMRange.isOnCD))
+    print("enemy: " .. tostring(AlsTiMRange.isTargettingEnemy))
+    if AlsTiMRange.isInRange and not AlsTiMRange.isOnCD and AlsTiMRange.isTargettingEnemy and targetGUID == myKickTargetGUID then
+        print("in")
         AlsTiMKickHelper.SendValid()
     else
+        print("else")
         AlsTiMKickHelper.SendInvalid()
     end
 end
 
------------------------------------------------------------------
--- 3.  UPDATE THE MESSAGE HANDLER -------------------------------
------------------------------------------------------------------
+-- message handler
 local function HandleAddonMessage(msg, sender)
     if sender == playerName then return end
 
@@ -204,9 +196,7 @@ local function HandleAddonMessage(msg, sender)
     end
 end
 
-------------------------------------------------------------
---  Slash‑command logic
-------------------------------------------------------------
+-- slash commands
 SLASH_KICKER1 = "/timkick"
 SlashCmdList.KICKER = function(msg)
     msg = trim(string.lower(msg or ""))
@@ -247,9 +237,7 @@ SlashCmdList.KICKER = function(msg)
     end
 end
 
-------------------------------------------------------------
---  Event handler
-------------------------------------------------------------
+-- event handlers
 f:RegisterEvent("PLAYER_LOGIN")
 f:RegisterEvent("GROUP_ROSTER_UPDATE")
 f:RegisterEvent("CHAT_MSG_ADDON")
