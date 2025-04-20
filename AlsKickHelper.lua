@@ -166,7 +166,8 @@ function AlsTiMKickHelper.SendValid()
 end
 
 function AlsTiMKickHelper.SendUpdate()
-    if AlsTiMRange.isInRange and AlsTiMRange.isOnCD and AlsTiMRange.isTargettingEnemy then
+    local targetGUID = UnitGUID('target')
+    if AlsTiMRange.isInRange and AlsTiMRange.isOnCD and AlsTiMRange.isTargettingEnemy and targetGUID == myKickTargetGUID then
         AlsTiMKickHelper.SendValid()
     else
         AlsTiMKickHelper.SendInvalid()
