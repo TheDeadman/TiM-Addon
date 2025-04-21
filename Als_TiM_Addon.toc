@@ -1,4 +1,4 @@
-## Interface: 11403
+## Interface: 11507
 ## Title: Al's Time is Money Addon
 ## Notes: Focus and Kick Rotation Helpers
 ## Author: Al
