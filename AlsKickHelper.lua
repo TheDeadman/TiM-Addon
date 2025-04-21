@@ -6,10 +6,12 @@ local f                = CreateFrame("Frame")
 -- internal state
 local playerName       = UnitName("player")
 local myKickTargetGUID = nil -- your target’s GUID
+local myUpdateTime     = nil
 local assignments      = {}  -- [playerName] = guid
 local invalid          = {}  -- [playerName] = true  ⇒  user is no longer a valid timkick
 local assignTime       = {}  -- [playerName] = timestamp (when SET or VALID was sent)
-local isReady          = false
+local isReady          = nil
+local isValid          = false
 
 AlsTiMKickHelper       = {}
 
@@ -18,6 +20,8 @@ local function trim(s) return (s:gsub("^%s*(.-)%s*$", "%1")) end
 local function inGroup(name)
     return UnitInRaid(name) or UnitInParty(name) or name == playerName
 end
+
+local stringtoboolean = { ["true"] = true, ["false"] = false }
 
 -- ui
 local function CreateUI()
@@ -88,6 +92,8 @@ local function UpdateUI()
         if name then
             if invalid[name] then
                 ui.lines[i]:SetText("|cffff2020" .. name .. "|r")
+            elseif name == playerName then
+                ui.lines[i]:SetText("|cff20FF3e" .. name .. "|r")
             else
                 ui.lines[i]:SetText(name)
             end
@@ -133,10 +139,14 @@ local function SendAddon(type, payload)
 end
 
 function AlsTiMKickHelper.SendInvalid() -- <‑‑ you call this
-    if isReady then
-        SendAddon("INVALID")            -- broadcast to the group
-        invalid[playerName] = true      -- mark yourself locally
+    if isReady == true or isReady == nil then
+        local now = GetTime()
+        myUpdateTime = now
+        SendAddon("INVALID", tostring(now)) -- broadcast to the group
+        invalid[playerName] = true          -- mark yourself locally
+        assignTime[playerName] = now
         isReady = false
+        isValid = false
         UpdateUI()
     end
 end
@@ -147,23 +157,25 @@ function AlsTiMKickHelper.SendValid()
     if not isReady then
         local now = GetTime()
         SendAddon("VALID", tostring(now))
+        myUpdateTime = now
         invalid[playerName] = nil
         assignTime[playerName] = now
         isReady = true
+        isValid = true
         UpdateUI()
     end
 end
 
 function AlsTiMKickHelper.SendUpdate()
     local targetGUID = UnitGUID('target')
-    print("range: " .. tostring(AlsTiMRange.isInRange))
-    print("cd: " .. tostring(AlsTiMRange.isOnCD))
-    print("enemy: " .. tostring(AlsTiMRange.isTargettingEnemy))
+    -- print("cd: " .. tostring(AlsTiMRange.isOnCD))
+    -- print("enemy: " .. tostring(AlsTiMRange.isTargettingEnemy))
+
     if AlsTiMRange.isInRange and not AlsTiMRange.isOnCD and AlsTiMRange.isTargettingEnemy and targetGUID == myKickTargetGUID then
-        print("in")
+        -- print("in")
         AlsTiMKickHelper.SendValid()
     else
-        print("else")
+        -- print("else")
         AlsTiMKickHelper.SendInvalid()
     end
 end
@@ -177,19 +189,23 @@ local function HandleAddonMessage(msg, sender)
         invalid[sender]     = nil
         UpdateUI()
     elseif msg:sub(1, 4) == "SET:" then -- "SET:<guid>:<time>"
-        local rest          = msg:sub(5)
-        local guid, tstr    = rest:match("([^:]+):?(.*)")
-        assignments[sender] = guid
-        invalid[sender]     = nil
-        assignTime[sender]  = tonumber(tstr) or GetTime()
+        local rest                 = msg:sub(5)
+        local guid, tstr, validStr = rest:match("^([^:]+):([^:]+):(.+)$")
+        assignments[sender]        = guid
+        invalid[sender]            = not stringtoboolean[validStr]
+        assignTime[sender]         = tonumber(tstr)
         UpdateUI()
     elseif msg == "QUERY" then
-        if myKickTargetGUID then SendAddon("SET", myKickTargetGUID) end
+        if myKickTargetGUID then
+            SendAddon("SET", myKickTargetGUID .. ":" .. myUpdateTime .. ":" .. tostring(isValid))
+        end
     elseif msg == "INVALID" then -- unchanged
-        invalid[sender] = true
+        local t            = tonumber(msg:sub(7))
+        assignTime[sender] = t
+        invalid[sender]    = true
         UpdateUI()
     elseif msg:sub(1, 6) == "VALID:" then -- "VALID:<time>"
-        local t            = tonumber(msg:sub(7)) or GetTime()
+        local t            = tonumber(msg:sub(7))
         invalid[sender]    = nil
         assignTime[sender] = t
         UpdateUI()
@@ -208,9 +224,9 @@ SlashCmdList.KICKER = function(msg)
                 assignments[playerName] = guid
                 print("|cff00ff00[TimKick]|r kick target set to |cffffff00" .. UnitName("target") .. "|r.")
                 local now = GetTime()
-                SendAddon("SET", guid .. ":" .. now) -- new format with time
+                SendAddon("SET", guid .. ":" .. now .. ":" .. tostring(isValid)) -- new format with time
                 assignTime[playerName] = now
-                SendAddon("QUERY")                   -- ask others for their state
+                SendAddon("QUERY")                                               -- ask others for their state
                 UpdateUI()
             else
                 print("|cff00ff00[TimKick]|r Could not read target GUID.")
@@ -220,6 +236,7 @@ SlashCmdList.KICKER = function(msg)
         end
     elseif msg == "clear" then
         if myKickTargetGUID then
+            isReady                 = nil
             myKickTargetGUID        = nil
             assignments[playerName] = nil
             print("|cff00ff00[TimKick]|r kick target cleared.")
@@ -227,7 +244,7 @@ SlashCmdList.KICKER = function(msg)
             UpdateUI()
         end
     elseif msg == "invalid" then
-        AlsTimKickHelper.SendInvalid()
+        AlsTiMKickHelper.SendInvalid()
     elseif msg == "valid" then
         AlsTiMKickHelper.SendValid()
     else

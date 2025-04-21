@@ -12,6 +12,11 @@ local HEALTHBAR_H   = 18
 local ICON_SIZE     = 20
 local ICONS_PER_ROW = 8
 
+-- Dispellable debuff state
+local letters       = { "C", "D", "P", "M" }
+local fullWords     = { "Curse", "Disease", "Poison", "Magic" }
+local enabledTable  = { Curse = false, Disease = false, Poison = false, Magic = false }
+
 -- Anchors
 local anchor        = CreateFrame("Frame", "MF_Anchor", UIParent, "BackdropTemplate")
 anchor:SetSize(FRAME_W, HEALTHBAR_H)
@@ -42,11 +47,21 @@ local function ColorGradient(p)
 end
 
 local function FindGroupUnit(guid)
-    if UnitGUID("player") == guid then return "player" end
+    if UnitGUID("player") == guid then
+        return "player"
+    end
     if IsInRaid() then
-        for i = 1, 40 do if UnitGUID("raid" .. i) == guid then return "raid" .. i end end
+        for i = 1, 40 do
+            if UnitGUID("raid" .. i) == guid then
+                return "raid" .. i
+            end
+        end
     elseif IsInGroup() then
-        for i = 1, 4 do if UnitGUID("party" .. i) == guid then return "party" .. i end end
+        for i = 1, 4 do
+            if UnitGUID("party" .. i) == guid then
+                return "party" .. i
+            end
+        end
     end
 end
 
@@ -57,16 +72,42 @@ local function tableLength(T)
 end
 
 -- Internal tracking data
-MF.list   = {}
-MF.frames = {}
+MF.list        = {}
+MF.frames      = {}
+
+_G['TIMFOCUS'] = MF
 
 -- Debuff Updater
 local function UpdateDebuffs(f, unitName)
     local shown = 0
-    for i = 1, 40 do
+    for i = 1, 140 do
         local name, spellId, _, debuffType, duration, expirationTime, unitCaster, _, _, someId = UnitDebuff(unitName, i)
         if not name then break end
         if unitCaster == "player" then
+            shown = shown + 1
+            if shown <= ICONS_PER_ROW then
+                local icon = f.debuffIcons[shown].icon
+                local iconTexture = f.debuffIcons[shown].texture
+                local progress = f.debuffIcons[shown].progress
+                iconTexture:SetTexture(spellId)
+                progress:SetCooldown(expirationTime - duration, duration)
+                icon:Show()
+            end
+        end
+    end
+
+    -- Hide unused icons
+    for i = shown + 1, ICONS_PER_ROW do
+        f.debuffIcons[i].icon:Hide()
+    end
+end
+
+local function UpdateDispellableDebuffs(f, unitName)
+    local shown = 0
+    for i = 1, 140 do
+        local name, spellId, _, debuffType, duration, expirationTime, unitCaster, _, _, someId = UnitDebuff(unitName, i)
+        if not name then break end
+        if enabledTable[debuffType] then
             shown = shown + 1
             if shown <= ICONS_PER_ROW then
                 local icon = f.debuffIcons[shown].icon
@@ -180,7 +221,13 @@ function UpdateFocusFrame(f, unitName)
         f.hpValue:SetText("")
         f.nameText:SetTextColor(.6, .6, .6)
     end
-    UpdateDebuffs(f, unitName)
+
+    -- If it has a unitID then assume it is friendly
+    if f.data.unitID then
+        UpdateDispellableDebuffs(f, unitName)
+    else
+        UpdateDebuffs(f, unitName)
+    end
 end
 
 local function ReorderFrames()
@@ -214,24 +261,30 @@ function MF:Add()
     NewFocusFrame(data)
 end
 
-function MF:Remove(arg)
-    if not arg or arg == "" then
-        print("|cff33ff99MF|r: /timfocus clear <name|index>"); return
+function MF:Remove()
+    local targetGuid = UnitGUID('target')
+
+    if targetGuid == nil then
+        print("|cff33ff99MF|r: Select a target to remove from the list"); return
     end
+
     local guid
-    if tonumber(arg) then
-        -- for g, d in pairs(self.list) do if d.index == tonumber(arg) then guid = g end end
-    else
-        for g, d in pairs(self.list) do if d.name:lower() == arg:lower() then guid = g end end
+
+    for listEntryGuid, listEntry in pairs(self.list) do
+        if listEntryGuid:lower() == targetGuid:lower() then
+            guid = listEntryGuid
+        end
     end
+
+
     if not guid then
         print("|cff33ff99MF|r: Focus target not found."); return
     end
-    -- local idx = self.list[guid].index
     if MF.frames[guid] then
         UnregisterUnitWatch(MF.frames[guid])
         MF.frames[guid]:Hide()
     end
+
     MF.frames[guid] = nil
     MF.list[guid] = nil
 
@@ -245,6 +298,52 @@ function MF:ClearAll()
     end
     wipe(self.frames); wipe(self.list)
 end
+
+-- Dispell toggle buttons
+-- MyToggleButtons.lua
+-- Classic WoW  ►  four 16 × 16 toggle buttons: “C”, “D”, “P”, “M” in one row.
+
+
+local spacing = 4  -- gap between buttons (pixels)
+local anchorX = 10 -- screen‑position tweak
+local anchorY = 12
+
+local buttons = {}
+
+for i, ch in ipairs(letters) do
+    local b = CreateFrame("CheckButton", "ToggleDispels-" .. ch, UIParent)
+    b:SetSize(16, 16)
+
+    -- position them left‑to‑right
+    if i == 1 then
+        b:SetPoint("TOPLEFT", anchor, "TOPLEFT", anchorX, anchorY)
+    else
+        local index = i - 1;
+        b:SetPoint("LEFT", buttons[index], "RIGHT", spacing, 0)
+    end
+
+    -- basic textures
+    b:SetNormalTexture("Interface\\Buttons\\UI-Quickslot2")
+    b:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD") -- mouse‑over glow
+    b:SetCheckedTexture("Interface\\Buttons\\CheckButtonHilight", "ADD")     -- lit when toggled ON
+
+    -- single‑letter label
+    local txt = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    txt:SetPoint("CENTER")
+    txt:SetText(ch)
+
+    -- (optional) react to clicks
+    b:SetScript("OnClick", function(self)
+        local on = self:GetChecked() -- true when highlighted
+        local category = fullWords[i]
+        enabledTable[category] = on
+        -- add your custom logic here
+    end)
+
+    buttons[i] = b
+end
+
 
 -- Events
 local e = CreateFrame("Frame")
@@ -282,20 +381,24 @@ SlashCmdList.MULTIFOCUS = function(msg)
     if msg == "" then
         print("|cff33ff99TiMFocus|r:",
             "/timfocus add – add current target",
-            "/timfocus clear <name|#> – remove one",
-            "/timfocus clearall – remove all",
-            "/timfocus lock – lock/unlock frames")
+            "/timfocus remove – remove current target",
+            "/timfocus clear - remove all focus targets",
+            "/timfocus lock – lock frames",
+            "/timfocus unlock – unlock frames")
     elseif msg == "add" then
         MF:Add()
-    elseif msg:match("^clear%s") then
-        MF:Remove(msg:match("^clear%s+(.+)$") or "")
+    elseif msg == "remove" then
+        MF:Remove()
     elseif msg == "clearall" then
         MF:ClearAll()
     elseif msg == "lock" then
-        local locked = not anchor:IsMovable()
-        anchor:SetMovable(locked); anchor:EnableMouse(locked)
-        anchor.text:SetShown(locked)
-        print("|cff33ff99MF|r anchor " .. (locked and "unlocked (drag to move)." or "locked."))
+        anchor:SetMovable(false); anchor:EnableMouse(false)
+        anchor.text:SetShown(false)
+        print("|cff33ff99MF|r anchor locked")
+    elseif msg == "unlock" then
+        anchor:SetMovable(true); anchor:EnableMouse(true)
+        anchor.text:SetShown(true)
+        print("|cff33ff99MF|r anchor unlocked (drag to move).")
     else
         print("|cff33ff99MF|r: Unknown command – /timfocus for help.")
     end

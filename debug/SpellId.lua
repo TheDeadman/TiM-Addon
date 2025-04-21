@@ -5,7 +5,7 @@ print("ADDON NAME: " .. addonName)
 
 local PSL     = CreateFrame("Frame", "SpellIdFrame")
 local party   = {} -- [GUID] = true for everyone currently in party (incl. player)
-local enabled = true
+local enabled = false
 
 -- Party Table
 local function UpdatePartyTable()

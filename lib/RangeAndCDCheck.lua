@@ -9,6 +9,9 @@ AlsTiMRange.currentEnemyTarget = nil
 
 
 function AlsTiMRange.CheckKickRange()
+    if not AlsTiMAbilities.bookSpellId then
+        return
+    end
     local inRange = IsSpellInRange(AlsTiMAbilities.bookSpellId, BOOKTYPE_SPELL, "target")
 
     if inRange == nil then
@@ -26,10 +29,14 @@ function AlsTiMRange.CheckKickRange()
 end
 
 function AlsTiMRange.CheckCD()
+    if not AlsTiMAbilities.interruptName then
+        return
+    end
+    -- print("INTERRUPT ABILITY: " .. AlsTiMAbilities.interruptName)
     local start, dur, enabled = GetSpellCooldown(AlsTiMAbilities.interruptName)
     if enabled == 1 and dur > 2 then
         -- On CD
-        print("ON CD")
+        -- print("ON CD")
         AlsTiMRange.isOnCD = true
         return
     end

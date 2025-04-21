@@ -1,8 +1,8 @@
 ## Interface: 11403
 ## Title: Al's Time is Money Addon
-## Notes: Focus Helpers
+## Notes: Focus and Kick Rotation Helpers
 ## Author: Al
-## Version: 1.0
+## Version: 1.1
 
 lib/RangeAndCDCheck.lua
 lib/InterruptAbility.lua

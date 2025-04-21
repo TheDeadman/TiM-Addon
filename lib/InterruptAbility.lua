@@ -8,6 +8,7 @@ local CLASS_INTERRUPT         = {
     SHAMAN  = GetSpellInfo(8042),   -- Earth Shock
     MAGE    = GetSpellInfo(2139),   -- Counterspell
     PALADIN = GetSpellInfo(425609), -- Rebuke
+    -- WARLOCK = GetSpellInfo(403501), -- Haunt: For local debugging purposes
 }
 local CLASS_INTERRUPT_ID      = {
     ROGUE   = 1766,   -- Kick
@@ -15,6 +16,7 @@ local CLASS_INTERRUPT_ID      = {
     SHAMAN  = 8042,   -- Earth Shock
     MAGE    = 2139,   -- Counterspell
     PALADIN = 425609, -- Rebuke
+    -- WARLOCK = 403501, -- Haunt
 }
 
 local playerClass             = select(2, UnitClass("player"))
