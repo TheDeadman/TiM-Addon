@@ -141,7 +141,6 @@ local function NewFocusFrame(data)
         edgeSize = 16,
         insets = { left = 2, right = 2, top = 2, bottom = 2 }
     })
-    f:SetBackdropColor(0, 0, 0, .55)
     f.data = data
 
     -- Secure click stuff
@@ -150,7 +149,9 @@ local function NewFocusFrame(data)
         f:SetAttribute("type1", "target")
         f:SetAttribute("*type2", "menu")
         RegisterUnitWatch(f)
+        f:SetBackdropColor(0, 6, 0, .25)
     else
+        f:SetBackdropColor(6, 0, 0, .25)
         f:SetAttribute("type", "macro")
         f:SetAttribute("macrotext", "/targetexact " .. data.name)
     end
