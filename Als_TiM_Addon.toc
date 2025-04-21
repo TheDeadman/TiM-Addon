@@ -2,7 +2,7 @@
 ## Title: Al's Time is Money Addon
 ## Notes: Focus and Kick Rotation Helpers
 ## Author: Al
-## Version: 1.1
+## Version: 1.2
 
 lib/RangeAndCDCheck.lua
 lib/InterruptAbility.lua
